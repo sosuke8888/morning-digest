@@ -113,31 +113,64 @@ def text_to_notion_blocks(text: str) -> list[dict]:
     return blocks
 
 
-def create_notion_page(summaries: dict[str, str], date_str: str):
+def create_notion_routine_page(summaries: dict[str, str], date_str: str):
     from notion_client import Client
     notion = Client(auth=os.environ["NOTION_API_KEY"])
     parent_id = os.environ["NOTION_PARENT_PAGE_ID"].replace("-", "")
+    training_url = os.environ.get("TRAINING_URL", "")
 
-    children = []
+    def todo(label: str, url: str = "") -> dict:
+        rich_text = [{
+            "type": "text",
+            "text": {"content": label, "link": {"url": url} if url else None},
+            "annotations": {"bold": True},
+        }]
+        return {"object": "block", "type": "to_do", "to_do": {"rich_text": rich_text, "checked": False}}
+
+    children = [
+        # ── セクション 1: カレンダー ──
+        todo("1️⃣  カレンダー確認", "https://calendar.google.com"),
+        {
+            "object": "block", "type": "paragraph",
+            "paragraph": {"rich_text": [{"type": "text", "text": {"content": "今日の予定・移動・会議を確認する"}, "annotations": {"color": "gray"}}]},
+        },
+        {"object": "block", "type": "divider", "divider": {}},
+
+        # ── セクション 2: ニュース ──
+        todo("2️⃣  ニュース確認"),
+    ]
+
     for category, summary in summaries.items():
         children.append({
             "object": "block",
-            "type": "heading_2",
-            "heading_2": {
-                "rich_text": [{"type": "text", "text": {"content": category}}]
-            }
+            "type": "toggle",
+            "toggle": {
+                "rich_text": [{"type": "text", "text": {"content": category}}],
+                "children": text_to_notion_blocks(summary),
+            },
         })
-        children.extend(text_to_notion_blocks(summary))
-        children.append({"object": "block", "type": "divider", "divider": {}})
+
+    children.append({"object": "block", "type": "divider", "divider": {}})
+
+    # ── セクション 3: 研修動画 ──
+    training_text = training_url if training_url else "動画URLをGitHub SecretsのTRAINING_URLに設定してください"
+    children.extend([
+        todo("3️⃣  研修動画を見る", training_url),
+        {
+            "object": "block", "type": "paragraph",
+            "paragraph": {"rich_text": [{"type": "text", "text": {
+                "content": training_text,
+                "link": {"url": training_url} if training_url else None,
+            }}]},
+        },
+    ])
 
     notion.pages.create(
         parent={"page_id": parent_id},
-        properties={
-            "title": {"title": [{"text": {"content": f"📰 Morning Digest {date_str}"}}]}
-        },
+        properties={"title": {"title": [{"text": {"content": f"🌅 Morning Routine {date_str}"}}]}},
         children=children,
     )
-    print("✅ Notion ページを作成しました")
+    print("✅ Notion ページ「Morning Routine」を作成しました")
 
 
 def generate_html(summaries: dict[str, str], date_str: str) -> str:
@@ -296,7 +329,7 @@ def main():
     print(f"✅ index.html を生成しました ({len(html_content):,} bytes)")
 
     if os.environ.get("NOTION_API_KEY") and os.environ.get("NOTION_PARENT_PAGE_ID"):
-        create_notion_page(summaries, date_str)
+        create_notion_routine_page(summaries, date_str)
     else:
         print("ℹ️  NOTION_API_KEY / NOTION_PARENT_PAGE_ID が未設定のため Notion への投稿をスキップ")
 

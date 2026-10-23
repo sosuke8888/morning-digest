@@ -28,6 +28,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+          TRAINING_URL: ${{ secrets.TRAINING_URL }}
         run: python fetch_news.py
 
       - name: Commit and push index.html
