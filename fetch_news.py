@@ -86,6 +86,60 @@ def summarize_with_claude(category: str, articles: list[dict]) -> str:
     return message.content[0].text
 
 
+def text_to_notion_blocks(text: str) -> list[dict]:
+    blocks = []
+    for line in text.split("\n"):
+        if not line.strip():
+            continue
+        if line.startswith("▶"):
+            blocks.append({
+                "object": "block",
+                "type": "heading_3",
+                "heading_3": {
+                    "rich_text": [{"type": "text", "text": {"content": line}, "annotations": {"bold": True}}],
+                    "color": "default",
+                }
+            })
+        elif line.strip() == "---":
+            blocks.append({"object": "block", "type": "divider", "divider": {}})
+        else:
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": line}}]
+                }
+            })
+    return blocks
+
+
+def create_notion_page(summaries: dict[str, str], date_str: str):
+    from notion_client import Client
+    notion = Client(auth=os.environ["NOTION_API_KEY"])
+    parent_id = os.environ["NOTION_PARENT_PAGE_ID"].replace("-", "")
+
+    children = []
+    for category, summary in summaries.items():
+        children.append({
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [{"type": "text", "text": {"content": category}}]
+            }
+        })
+        children.extend(text_to_notion_blocks(summary))
+        children.append({"object": "block", "type": "divider", "divider": {}})
+
+    notion.pages.create(
+        parent={"page_id": parent_id},
+        properties={
+            "title": {"title": [{"text": {"content": f"📰 Morning Digest {date_str}"}}]}
+        },
+        children=children,
+    )
+    print("✅ Notion ページを作成しました")
+
+
 def generate_html(summaries: dict[str, str], date_str: str) -> str:
     sections_html = ""
     for category, summary in summaries.items():
@@ -240,6 +294,11 @@ def main():
     html_content = generate_html(summaries, date_str)
     Path("index.html").write_text(html_content, encoding="utf-8")
     print(f"✅ index.html を生成しました ({len(html_content):,} bytes)")
+
+    if os.environ.get("NOTION_API_KEY") and os.environ.get("NOTION_PARENT_PAGE_ID"):
+        create_notion_page(summaries, date_str)
+    else:
+        print("ℹ️  NOTION_API_KEY / NOTION_PARENT_PAGE_ID が未設定のため Notion への投稿をスキップ")
 
 
 if __name__ == "__main__":
